@@ -1,4 +1,5 @@
 import streamlit as st
+from chatbot import initialize_gemini_chat
 def settings():
     st.title("Settings")
     temperature=st.slider("Temperature",0.0,2.0,st.session_state.generation_config["temperature"],0.1)
@@ -11,5 +12,7 @@ def settings():
             "temperature":temperature,
             "max_output_tokens":max_tokens,
             "top_p":top_p,
-            "top_k":top_k
+            "top_k":top_k,
         }
+        st.session_state.conversations[st.session_state.current_convo]["chat"]=initialize_gemini_chat(st.session_state.generation_config,st.session_state.model)
+        st.success("Settings Applied")

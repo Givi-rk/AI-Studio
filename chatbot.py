@@ -12,13 +12,15 @@ def get_youtube_url(text):
     pattern=r"(https?://(?:www\.)?(?:youtube\.com|youtu\.be)[^\s]+)"
     match=re.search(pattern,text)
     return match.group(0) if match else None
-def initialize_gemini_chat(generation_config:dict, model = 'gemini-3.1-flash-lite'):
+def initialize_gemini_chat(generation_config:dict, model = 'gemini-3.1-flash-lite',web_search=False):
     config=types.GenerateContentConfig(
         temperature=generation_config.get("temperature",1.0),
         max_output_tokens=generation_config.get("max_output_tokens",2048),
         top_p=generation_config.get("top_p",0.95),
-        top_k=generation_config.get("top_k",40)
-        )
+        top_k=generation_config.get("top_k",40),
+    )
+    if st.session_state.web_search:
+        config.tools=[types.Tool(google_search=types.GoogleSearch())]
     try:
         return client.chats.create(model=model,config=config,)
     except APIError as e:

@@ -26,16 +26,16 @@ def load_conversations():
             data=json.load(f)
         conversations={}
         for title,convo in data.items():
-            conversations[title]={"messages":convo["messages"],"chat":initialize_gemini_chat(st.session_state.generation_config,st.session_state.model)}
+            conversations[title]={"messages":convo["messages"],"chat":initialize_gemini_chat(st.session_state.generation_config,st.session_state.model,st.session_state.web_search)}
         conversations['Conversation 1'] = {
             "messages":[],
-            "chat":initialize_gemini_chat(st.session_state.generation_config,st.session_state.model)
+            "chat":initialize_gemini_chat(st.session_state.generation_config,st.session_state.model,st.session_state.web_search)
         }
         return conversations
     return {
         "Conversation 1":{
             "messages":[],
-            "chat":initialize_gemini_chat(st.session_state.generation_config,st.session_state.model)
+            "chat":initialize_gemini_chat(st.session_state.generation_config,st.session_state.model,st.session_state.web_search)
         }
     }
 if "model" not in st.session_state:
@@ -45,11 +45,14 @@ if "generation_config" not in st.session_state:
         "temperature":1.0,
         "max_output_tokens":2048,
         "top_p":0.95,
-        "top_k":40
+        "top_k":40,
     }
+if "web_search" not in st.session_state:
+    st.session_state.web_search=False
 if "conversations" not in st.session_state:
     st.session_state.conversations=load_conversations()
-        
+if "is_generating" not in st.session_state:
+    st.session_state.is_generating = False
 if "current_convo" not in st.session_state:
     st.session_state.current_convo = 'Conversation 1'
 if "current_page" not in st.session_state:
@@ -64,7 +67,7 @@ def save_conversations():
         json.dump(data,f,indent=4) 
 def on_change():
     st.session_state.model = st.session_state.model_widget
-    st.session_state.conversations[st.session_state.current_convo]['chat'] = initialize_gemini_chat(st.session_state.generation_config, st.session_state.model)
+    st.session_state.conversations[st.session_state.current_convo]['chat'] = initialize_gemini_chat(st.session_state.generation_config, st.session_state.model,st.session_state.web_search)
 def model():
     st.selectbox("Model",options=list(MODEL.keys()),index=list(MODEL.keys()).index(st.session_state.model), key='model_widget' ,format_func=lambda key:MODEL[key], on_change=on_change)
 current=st.session_state.conversations[st.session_state.current_convo ]
@@ -91,7 +94,7 @@ if st.session_state.current_page=="chat" and len(messages)>=1:
                 st.session_state.current_convo = 'New Chat'
                 st.session_state.conversations['New Chat']={
                     "messages":[],
-                    "chat": initialize_gemini_chat(st.session_state.generation_config, st.session_state.model)
+                    "chat": initialize_gemini_chat(st.session_state.generation_config, st.session_state.model,st.session_state.web_search)
                 }
                 save_conversations()
                 st.rerun()
@@ -110,16 +113,27 @@ if st.session_state.current_page=="chat" and len(messages)>=1:
                 #     }
                 #     st.rerun()
 page=st.session_state.current_page
-chat_display.display(messages)
+if st.session_state.current_page=="chat":
+    chat_display.display(messages)
 if page=="analytics":
-    display_analytics.show(messages)
+    display_analytics.show()
 elif page=="settings":
     settings.settings()
 else:
-    chat_input=st.chat_input(placeholder="Ask me anything...",accept_file="multiple")
+    _,__,c0=st.columns([5,5,2])
+    with c0:
+        st.toggle("🌐 Web Search",key="web_search", disabled=st.session_state.is_generating)
+        if "last_web_search" not in st.session_state:
+            st.session_state.last_web_search=st.session_state.web_search
+        if st.session_state.last_web_search!=st.session_state.web_search:
+            st.session_state.last_web_search=st.session_state.web_search
+            st.session_state.conversations[st.session_state.current_convo]["chat"]=initialize_gemini_chat(st.session_state.generation_config,st.session_state.model,st.session_state.web_search)
+            chat=st.session_state.conversations[st.session_state.current_convo]["chat"]
+    chat_input=st.chat_input(placeholder="Ask me anything...",accept_file="multiple", disabled=st.session_state.is_generating)
     prompt=None
     uploaded_files=[]
     if chat_input:
+        st.session_state.is_generating = True
         prompt=chat_input.text
         uploaded_files=chat_input.files
     if len(messages)==0:
@@ -149,11 +163,12 @@ else:
             
         messages.append({"role":"user","message":prompt,"files":saved_files,"timestamps":get_current_timestamp()})
         save_conversations()
-        if len(messages)==2:
+        if len(messages)<=2:
             title=generate_chat_title(st.session_state.pending_prompt)
             old=st.session_state.current_convo
             st.session_state.conversations[title]=st.session_state.conversations.pop(old)
             st.session_state.current_convo=title
+            save_conversations()
             st.rerun()
     if st.session_state.pending_prompt:
         with st.spinner("Gemini Thinking"):
@@ -166,10 +181,11 @@ else:
                         for ch in chunk.text:
                             text+=ch
                             placeholder.markdown(ai_message(text+"|"), unsafe_allow_html=True)
-                            time.sleep(0.01)
+                            time.sleep(0.001)
                     placeholder.markdown(ai_message(text), unsafe_allow_html=True)
                     messages.append({"role":"assistant","message":text,"timestamps":get_current_timestamp()})
                     save_conversations()
+                    st.session_state.is_generating = False
                     st.session_state.pending_prompt=None
                     st.rerun()
             except Exception as e:

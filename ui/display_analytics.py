@@ -1,7 +1,7 @@
 import streamlit as st
 import Analytics
-def show(messages):
-    stats=Analytics.get_statistics(messages)
+def show():
+    stats=Analytics.get_statistics()
     st.subheader("Conversation Statistics")
     col1,col2=st.columns(2)
     with col1:

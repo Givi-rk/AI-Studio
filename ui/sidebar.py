@@ -6,7 +6,7 @@ def new_chat():
         name=f"Conversation {number}"
         st.session_state.conversations[name]={
             "messages":[],
-            "chat":chatbot.initialize_gemini_chat(st.session_state.generation_config, st.session_state.model)
+            "chat":chatbot.initialize_gemini_chat(st.session_state.generation_config, st.session_state.model,st.session_state.web_search)
         }
         st.session_state.current_convo=name
         st.session_state.current_page="chat"
@@ -21,7 +21,7 @@ def settings():
         st.rerun()
 def conversation_history():
     st.subheader("Recent chats")
-    for name in st.session_state.conversations.keys():
+    for name in reversed(st.session_state.conversations.keys()):
         if st.button(name,use_container_width=True,key=name):
             st.session_state.current_convo=name
             st.session_state.current_page="chat"

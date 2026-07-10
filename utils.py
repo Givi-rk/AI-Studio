@@ -1,7 +1,6 @@
 from datetime import datetime
-import json
 def get_current_timestamp()-> str:
-    return datetime.now().strftime("%d-%m-%Y %H:%M:%S")
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 def compile_stats(history:list)->dict:
     total_messages=len(history)
     user_mgs=len([m for m in history if m["role"]=="user"])
