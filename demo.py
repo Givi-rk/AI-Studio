@@ -42,11 +42,12 @@ def load_conversations():
     if conn:
         try:
             cursor=conn.cursor(dictionary=True)
-            cursor.execute("SELECT id,title FROM conversations WHERE user_id=%s ORDER BY updated_at ASC",(User_id,))
+            cursor.execute("SELECT id,title,pinned FROM conversations WHERE user_id=%s ORDER BY updated_at ASC",(User_id,))
             convos=cursor.fetchall()
             for convo in convos:
                 title=convo["title"]
                 convo_id=convo["id"]
+                is_pinned=bool(convo['pinned'])
                 cursor.execute("SELECT role,message,files,created_at FROM messages WHERE conversation_id=%s ORDER BY created_at ASC",(convo_id,))
                 db_messages=cursor.fetchall()
                 formatted_msg=[]
@@ -54,24 +55,26 @@ def load_conversations():
                     files_data=json.loads(m['files']) if m['files'] else []
                     formatted_msg.append({
                         "role":m["role"],
-                        "messages":m["message"],
+                        "message":m["message"],
                         "files":files_data,
                         "timestamps":str(m["created_at"])
                     })
                 conversations[title]={
                     "db_id":convo_id,
                     "messages":formatted_msg,
+                    "pinned":is_pinned,
                     "chat":initialize_gemini_chat(st.session_state.generation_config,st.session_state.model,st.session_state.web_search)
                 }
         except Error as e:
             st.error(f"Failed to load history:{e}")
         finally:
             conn.close()
-    if not conversations:
-        conversations["Conversation 1"]={
+    if st.session_state.get("current_convo","New Chat") not in conversations:
+        conversations["New Chat"]={
             "db_id":str(uuid.uuid4()),
-            "message":[],
-            "chat":initialize_gemini_chat(st.session_state.generation_config,st.session_state.model,st.session_state.web_search)
+            "messages":[],
+            "chat":initialize_gemini_chat(st.session_state.generation_config,st.session_state.model,st.session_state.web_search),
+            "pinned":False
         }
     return conversations
 if "model" not in st.session_state:
@@ -90,7 +93,7 @@ if "conversations" not in st.session_state:
 if "is_generating" not in st.session_state:
     st.session_state.is_generating = False
 if "current_convo" not in st.session_state:
-    st.session_state.current_convo = 'Conversation 1'
+    st.session_state.current_convo = 'New Chat'
 if "current_page" not in st.session_state:
     st.session_state.current_page="chat"
 if "pending_prompt" not in st.session_state:
@@ -125,25 +128,13 @@ def update_title(old_title,new_title):
         st.error(f"Failed to update title:{e}")
     finally:
         conn.close()
-def delete_convo(convo_title):
-    conn=get_db_connection()
-    if not conn: return
-    convo_id=st.session_state.conversations[convo_title]["db_id"]
-    try:
-        cursor=conn.cursor()
-        cursor.execute("DELETE FROM conversations WHERE id=%s",(convo_id,))
-        conn.commit()
-    except Error as e:
-        st.error(f"Failed to delete chat:{e}")
-    finally:
-        conn.close()
 def on_change():
     st.session_state.model = st.session_state.model_widget
     st.session_state.conversations[st.session_state.current_convo]['chat'] = initialize_gemini_chat(st.session_state.generation_config, st.session_state.model,st.session_state.web_search)
 def model():
     st.selectbox("Model",options=list(MODEL.keys()),index=list(MODEL.keys()).index(st.session_state.model), key='model_widget' ,format_func=lambda key:MODEL[key], on_change=on_change)
 current=st.session_state.conversations[st.session_state.current_convo ]
-messages=current["message"]
+messages=current["messages"]
 chat=current["chat"]
 sidebar.sidebar(messages,current)
 col1,col2=st.columns([7,5])
@@ -154,32 +145,11 @@ with col1:
 with col2:
     model()
 st.divider()
-if st.session_state.current_page=="chat" and len(messages)>=1:
-    col3,col4=st.columns([7,4])
-    with col4:
-        c1,c2=st.columns(2)
-        with c1:
-            st.download_button("Export Chat",data=json.dumps({ 'messages': current['messages'] },indent=4),file_name="chat_history.json",mime="application/json",use_container_width=True)
-        with c2:
-            if st.button("Clear Chat",use_container_width=True):
-                delete_convo(st.session_state.current_convo)
-                del st.session_state.conversations[st.session_state.current_convo]
-                st.session_state.current_convo = 'New Chat'
-                st.session_state.conversations['New Chat']={
-                    "db_id":str(uuid.uuid4()),
-                    "messages":[],
-                    "chat": initialize_gemini_chat(st.session_state.generation_config, st.session_state.model,st.session_state.web_search)
-                }
-                save_conversations()
-                st.rerun()
 page=st.session_state.current_page
-if st.session_state.current_page=="chat":
+if page=="chat":
     chat_display.display(messages)
-if page=="analytics":
-    display_analytics.show()
-elif page=="settings":
-    settings.settings()
-else:
+    if len(messages)==0:
+        welcome.show()
     _,__,c0=st.columns([5,5,2])
     with c0:
         st.toggle("🌐 Web Search",key="web_search", disabled=st.session_state.is_generating)
@@ -196,8 +166,6 @@ else:
         st.session_state.is_generating = True
         prompt=chat_input.text
         uploaded_files=chat_input.files
-    if len(messages)==0:
-        welcome.show()
     if prompt:
         st.markdown(user_message(prompt), unsafe_allow_html=True)
         st.session_state.pending_prompt=prompt
@@ -250,4 +218,10 @@ else:
                     st.rerun()
             except Exception as e:
                 st.error(f"Error:{e}")
+                st.session_state.is_generating = False
+                st.session_state.pending_prompt=None
+elif page=="analytics":
+    display_analytics.show()
+elif page=="settings":
+    settings.settings()
     

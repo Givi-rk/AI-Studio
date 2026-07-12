@@ -1,12 +1,21 @@
 import streamlit as st
-import chatbot
+from chatbot import initialize_gemini_chat
+from database import get_db_connection
+from mysql.connector import Error
+import uuid
+import json
 def new_chat():
     if st.button("+ New Chat",use_container_width=True):
-        number=len(st.session_state.conversations)+1
-        name=f"Conversation {number}"
+        current=st.session_state.current_convo
+        if len(st.session_state.conversations[current]["messages"])==0:
+            st.session_state.current_page="chat"
+            st.rerun()
+        name="New Chat"
         st.session_state.conversations[name]={
+            "db_id":str(uuid.uuid4()),
             "messages":[],
-            "chat":chatbot.initialize_gemini_chat(st.session_state.generation_config, st.session_state.model,st.session_state.web_search)
+            "chat":initialize_gemini_chat(st.session_state.generation_config, st.session_state.model,st.session_state.web_search),
+            "pinned":False
         }
         st.session_state.current_convo=name
         st.session_state.current_page="chat"
@@ -19,13 +28,92 @@ def settings():
     if st.button("Settings",use_container_width=True):
         st.session_state.current_page="settings"
         st.rerun()
+@st.dialog("Delete Conversation")
+def delete_convo(convo_name):
+    st.warning(f"Are you sure you want to delete this conversation{convo_name}? This action cannot be undone.")
+    col1,col2 =st.columns(2)
+    with col1:
+        if st.button("Cancel",use_container_width=True):
+            st.rerun()
+    with col2:
+        if st.button("Yes,Delete",type='primary',use_container_width=True):
+            if convo_name in st.session_state.conversations:
+                convo_id=st.session_state.conversations[convo_name]["db_id"]
+                del st.session_state.conversations[convo_name]
+                conn=get_db_connection()
+                if not conn: return
+                try:
+                    cursor=conn.cursor()
+                    cursor.execute("DELETE FROM conversations WHERE id=%s",(convo_id,))
+                    conn.commit()
+                except Error as e:
+                    st.error(f"Failed to delete chat:{e}")
+                finally:
+                    conn.close()
+            st.session_state.current_convo = 'New Chat'
+            if st.session_state.current_convo==convo_name:
+                st.session_state.conversations['New Chat']={
+                    "db_id":str(uuid.uuid4()),
+                    "messages":[],
+                    "chat": initialize_gemini_chat(st.session_state.generation_config, st.session_state.model,st.session_state.web_search),
+                    "pinned":False
+                }
+            st.rerun()
 def conversation_history():
     st.subheader("Recent chats")
-    for name in reversed(st.session_state.conversations.keys()):
-        if st.button(name,use_container_width=True,key=name):
-            st.session_state.current_convo=name
-            st.session_state.current_page="chat"
-            st.rerun()
+    pinned_chat=[]
+    unpinned_chat=[]
+    for name,data in st.session_state.conversations.items():
+        if data.get("pinned",False):
+            pinned_chat.append(name)
+        else:
+            unpinned_chat.append(name)
+    pinned_chat.reverse()
+    unpinned_chat.reverse()
+    sorted_chats=pinned_chat+unpinned_chat
+    for name in sorted_chats:
+        messages=st.session_state.conversations[name]["messages"]
+        has_messages=len(messages)>0
+        col_btn,col_menu=st.columns([8.5,1.5])
+        with col_btn:
+            is_active=(st.session_state.get("current_convo")==name)
+            btn_type="primary" if is_active else "secondary"
+            if st.button(name,icon=':material/keep:'if name in pinned_chat else None,use_container_width=True,type=btn_type,key=f"go_{name}"):
+                st.session_state.current_convo=name
+                st.session_state.current_page="chat"
+                st.rerun()
+        if has_messages:
+            with col_menu:
+                with st.popover("⋮",use_container_width=True):
+                    pin_label="Unpin" if name in pinned_chat else "Pin"
+                    if st.button(f"{pin_label} Chat",key=f"pin_{name}",use_container_width=True):
+                        current_pin_state=st.session_state.conversations[name].get("pinned",False)
+                        new_pin_state= not current_pin_state
+                        st.session_state.conversations[name]["pinned"]=new_pin_state
+                        try:
+                            conn=get_db_connection()
+                            if conn:
+                                cursor=conn.cursor()
+                                convo_id=st.session_state.conversations[name]["db_id"]
+                                cursor.execute("UPDATE conversations SET pinned=%s WHERE id=%s",(int(new_pin_state),convo_id,))
+                                conn.commit()
+                                conn.close()
+                        except Error as e:
+                            st.error(f"Failed to Pin:{e}")
+                        st.rerun()
+                    #-------export--------
+                    with st.popover("Export Chat",use_container_width=True):
+                        chat_messages=st.session_state.conversations[name].get("messages",[])
+                        json_data=json.dumps({"messages":chat_messages},indent=4)
+                        st.download_button("JSON",data=json_data,file_name=f"{name.replace(' ','_')}.json",mime="application/json",key=f"export_{name}",use_container_width=True)
+                        #---text---
+                        text_data=f"Chat:{name}"+"\n\n"
+                        for m in messages:
+                            role="User" if m['role']=="user" else "AI"
+                            text_data+=f"\n{role}:{m['message']}\n"
+                        st.download_button("TXT",data=text_data,file_name=f"{name.replace(' ','_')}.txt",mime="text/plain",key=f"export_txt_{name}",use_container_width=True)
+                    if st.button("Delete Chat",key=f"delete_{name}",use_container_width=True):
+                        delete_convo(name)
 def sidebar(messages,current):
     with st.sidebar:
         st.header("AI Studio")

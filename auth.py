@@ -53,52 +53,54 @@ def authenticate_user(conn,email,password):
     finally:
         cursor.close()
 def render_auth_page():
-    st.title("Welcome To Gemini AI Chat")
-    st.markdown("Please login or create an account to continue.")
-    tab1,tab2=st.tabs(['Login','Register'])
-    with tab1:
-        st.subheader("Login to your account")
-        with st.form("login Form",clear_on_submit=True):
-            login_email=st.text_input("email")
-            show_pwd=st.checkbox("Show Password",key="show_pwd_login")
-            pwd_type="default" if show_pwd else "password"
-            login_pwd=st.text_input("password",type=pwd_type)
-            remember_me=st.checkbox("Remember Me")
-            submit=st.form_submit_button("Login")
-            if submit:
-                if not login_email or not login_pwd :
-                    st.warning("Please fill in both email and password.")
-                else:
-                    conn=get_db_connection()
-                    user_data=authenticate_user(conn,login_email,login_pwd)
-                    if conn: conn.close()
-                    if user_data:
-                        st.session_state["logged_in"]=True
-                        st.session_state["user_id"]=user_data["id"]
-                        st.session_state["user_name"]=user_data["full_name"]
-                        time.sleep(1)
-                        st.rerun()
-    with tab2:
-        st.subheader("Create a new account.")
-        with st.form("Register Form"):
-            reg_name=st.text_input("Full Name")
-            reg_email=st.text_input("Email")
-            show_pwd_reg=st.checkbox("Show Password",key="show_pwd_reg")
-            reg_pwd_type="default" if show_pwd_reg else "password"
-            reg_password=st.text_input("Password",type=reg_pwd_type)
-            reg_confirm_pwd=st.text_input("Confirm Password",type=reg_pwd_type)
-            submit_reg=st.form_submit_button("Create Account")
-            if submit_reg:
-                if not all ([reg_name,reg_email,reg_password,reg_confirm_pwd]):
-                    st.warning("Please fill out all fields.")
-                elif not is_valid_email(reg_email):
-                    st.error("Please enter a valid email address.")
-                elif len(reg_password)<6:
-                    st.error("Password must be at least 6 characters long.")
-                elif reg_password != reg_confirm_pwd:
-                    st.error("Password do not match.")
-                else:
-                    conn=get_db_connection()
-                    register_user_db(conn,reg_name,reg_email,reg_password)
-                    if conn: conn.close()
+    left,mid,right=st.columns([4,7,4])
+    with mid:
+        st.markdown("<h1 style='text-align:center;'>Welcome To Gemini AI Chat</h1>",unsafe_allow_html=True)
+        st.markdown("<h6 style='text-align:center;'>Please login or create an account to continue.</h6>",unsafe_allow_html=True)
+        tab1,tab2=st.tabs(['Login','Register'])
+        with tab1:
+            st.subheader("Login to your account")
+            with st.form("login Form",clear_on_submit=True):
+                login_email=st.text_input("email")
+                show_pwd=st.checkbox("Show Password",key="show_pwd_login")
+                pwd_type="default" if show_pwd else "password"
+                login_pwd=st.text_input("password",type=pwd_type)
+                remember_me=st.checkbox("Remember Me")
+                submit=st.form_submit_button("Login")
+                if submit:
+                    if not login_email or not login_pwd :
+                        st.warning("Please fill in both email and password.")
+                    else:
+                        conn=get_db_connection()
+                        user_data=authenticate_user(conn,login_email,login_pwd)
+                        if conn: conn.close()
+                        if user_data:
+                            st.session_state["logged_in"]=True
+                            st.session_state["user_id"]=user_data["id"]
+                            st.session_state["user_name"]=user_data["full_name"]
+                            time.sleep(1)
+                            st.rerun()
+        with tab2:
+            st.subheader("Create a new account.")
+            with st.form("Register Form"):
+                reg_name=st.text_input("Full Name")
+                reg_email=st.text_input("Email")
+                show_pwd_reg=st.checkbox("Show Password",key="show_pwd_reg")
+                reg_pwd_type="default" if show_pwd_reg else "password"
+                reg_password=st.text_input("Password",type=reg_pwd_type)
+                reg_confirm_pwd=st.text_input("Confirm Password",type=reg_pwd_type)
+                submit_reg=st.form_submit_button("Create Account")
+                if submit_reg:
+                    if not all ([reg_name,reg_email,reg_password,reg_confirm_pwd]):
+                        st.warning("Please fill out all fields.")
+                    elif not is_valid_email(reg_email):
+                        st.error("Please enter a valid email address.")
+                    elif len(reg_password)<6:
+                        st.error("Password must be at least 6 characters long.")
+                    elif reg_password != reg_confirm_pwd:
+                        st.error("Password do not match.")
+                    else:
+                        conn=get_db_connection()
+                        register_user_db(conn,reg_name,reg_email,reg_password)
+                        if conn: conn.close()
 
