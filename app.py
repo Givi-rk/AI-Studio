@@ -10,9 +10,10 @@ from mysql.connector import Error
 from PIL import Image
 import streamlit.components.v1 as components
 from database import get_db_connection
-from auth import render_auth_page
+from auth import render_auth_page, verify_access_token
 import uuid
-
+import re
+from file_generate import generate_file
 MODEL={
     "gemini-3.1-flash-lite":"Gemini 3.1 Flash Lite",
     "gemini-2.5-flash":"Gemini 2.5 Flash",
@@ -20,8 +21,10 @@ MODEL={
     "gemini-2-flash-lite":"Gemini 2 Flash Lite",
     "gemini-2.5-flash-lite":"Gemini 2.5 Flash Lite"
 }
-
 st.set_page_config(page_title="Gemini",layout="wide")
+from config import cookie_controller as controller
+stored_token = controller.get("user_id")
+time.sleep(0.1)
 Upload_folder="uploads"
 os.makedirs(Upload_folder,exist_ok=True)
 if "logged_in" not in st.session_state:
@@ -32,9 +35,22 @@ if "user_id" not in st.session_state:
 
 if "user_name" not in st.session_state:
     st.session_state["user_name"] = None
+stored_user_id=controller.get("user_id")
 if not st.session_state.get("logged_in",False):
-    render_auth_page()
-    st.stop()
+    if stored_token:
+        verified_user = verify_access_token(stored_token)
+        if verified_user:
+            st.session_state["logged_in"] = True
+            st.session_state["user_id"] = verified_user['user_id']
+            st.session_state['user_name'] = verified_user['user_name']
+            st.rerun()
+        else:
+            controller.remove("user_id")
+            render_auth_page()
+            st.stop()
+    else:
+        render_auth_page()
+        st.stop()
 User_id=st.session_state["user_id"]
 def load_conversations():
     conn=get_db_connection()
@@ -137,10 +153,39 @@ current=st.session_state.conversations[st.session_state.current_convo ]
 messages=current["messages"]
 chat=current["chat"]
 sidebar.sidebar(messages,current)
+st.markdown("""
+    <style>
+        /* 1. Make all intermediate wrapper containers visible so sticky positioning bubbles up to the scroll container */
+        [data-testid="stMainBlockContainer"],
+        [data-testid="stMainBlockContainer"] > div,
+        div[data-testid="stVerticalBlock"],
+        div[data-testid="stLayoutWrapper"] {
+            overflow: visible !important;
+        }
+        
+        /* 2. Target the exact row (stHorizontalBlock) that contains our columns */
+        div[data-testid="stHorizontalBlock"]:has(span#sticky-header) {
+            position: sticky !important;
+            /* 2.875rem clears the default Streamlit transparent header. 
+               Change this to 0rem if you have hidden the top right menu */
+            top: 2.875rem !important; 
+            background-color: var(--background-color) !important;
+            z-index: 999999 !important;
+            
+            /* Visual styling for the sticky block */
+            padding-bottom: 0.5rem !important;
+            padding-top: 1rem !important;
+            margin-top: -1rem !important;
+            border-bottom: 1px solid var(--secondary-background-color) !important;
+        }
+    </style>
+""", unsafe_allow_html=True)
 col1,col2=st.columns([7,5])
 with col1:
-    st.markdown(f"""<div 
-                style="display:flex;justify-content:flex-start;font-size:40px;font-weight:bold; margin-top: -40px;">{MODEL[st.session_state.model]}</div>
+    st.markdown(f"""<span id="sticky-header"></span>
+        <div style="display:flex;justify-content:flex-start;font-size:40px;font-weight:bold; margin-top: -15px;">
+            {MODEL[st.session_state.model]}
+        </div>
                 """,unsafe_allow_html=True)
 with col2:
     model()
@@ -166,6 +211,11 @@ if page=="chat":
         st.session_state.is_generating = True
         prompt=chat_input.text
         uploaded_files=chat_input.files
+        st.session_state.chat_uploaded_files = uploaded_files
+    if st.session_state.get("card_prompt"):
+        prompt=st.session_state.card_prompt
+        st.session_state.card_prompt=None
+        st.session_state.is_generating=True
     if prompt:
         st.markdown(user_message(prompt), unsafe_allow_html=True)
         st.session_state.pending_prompt=prompt
@@ -175,7 +225,6 @@ if page=="chat":
             with open(path,"wb")as f:
                 f.write(file.getbuffer())
             if file.type.startswith("image/"):
-                #image=Image.open(file)
                 st.image(file)
 
             elif file.type.startswith("video/"):
@@ -201,25 +250,31 @@ if page=="chat":
     if st.session_state.pending_prompt:
         with st.spinner("Gemini Thinking"):
             placeholder=st.empty()
-            text=""
+            # text=""
             try:
-                response=stream_response(chat,st.session_state.pending_prompt,uploaded_files)
+                response = stream_response(chat, st.session_state.pending_prompt, uploaded_files or st.session_state.get('chat_uploaded_files', []))
+                st.session_state.pop('chat_uploaded_files', None)
                 if response:
-                    for chunk in response:
-                        for ch in chunk.text:
-                            text+=ch
-                            placeholder.markdown(ai_message(text+"|"), unsafe_allow_html=True)
-                            time.sleep(0.001)
-                    placeholder.markdown(ai_message(text), unsafe_allow_html=True)
-                    messages.append({"role":"assistant","message":text,"timestamps":get_current_timestamp()})
-                    save_conversations(st.session_state.current_convo,"assistant",text)
+                    final_display = response.get("text", "")
+                    file_path = response.get("file_path")
+                    placeholder.markdown(ai_message(final_display), unsafe_allow_html=True)
+                    
+                    files_list=[file_path] if file_path else None 
+                    messages.append({
+                        "role": "assistant",
+                        "message": final_display,
+                        "files": files_list,
+                        "timestamps": get_current_timestamp()
+                    })
+                    save_conversations(st.session_state.current_convo, "assistant", final_display, files_list=files_list)
                     st.session_state.is_generating = False
-                    st.session_state.pending_prompt=None
+                    st.session_state.pending_prompt = None
                     st.rerun()
             except Exception as e:
                 st.error(f"Error:{e}")
+                st.session_state.pop('chat_uploaded_files', None)
                 st.session_state.is_generating = False
-                st.session_state.pending_prompt=None
+                st.session_state.pending_prompt = None
 elif page=="analytics":
     display_analytics.show()
 elif page=="settings":

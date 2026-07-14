@@ -3,8 +3,29 @@ import re
 import bcrypt
 import uuid
 import time
+import jwt
+from config import JWT_SECRET
+from datetime import datetime, timedelta, timezone
 from database import get_db_connection
+#JWT_SECRET=get_jwt_secret()
+JWT_ALGORITHM="HS256"
+def create_access_token(user_id: str, username: str, expires_in_days: int = 30) -> str:
+    payload = {
+        "user_id": str(user_id),
+        "exp": datetime.now(timezone.utc) + timedelta(days=expires_in_days),
+        'user_name': username
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
+def verify_access_token(token: str) -> str | None:
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        return {
+            'user_id': payload.get('user_id'),
+            'user_name': payload.get('user_name')
+        }
+    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
+        return None
 def hash_password(password:str)->str:
     return bcrypt.hashpw(password.encode("utf-8"),bcrypt.gensalt()).decode("utf-8")
 def verify_password(password:str,hash_password:str)->bool:
@@ -42,7 +63,7 @@ def authenticate_user(conn,email,password):
         cursor.execute("SELECT id,full_name,password_hash FROM users WHERE email_id=%s",(email,))
         user=cursor.fetchone()
         if user and verify_password(password,user['password_hash']):
-            st.success("Login Successfully.")
+            st.success("Logged in Successfully.")
             return {"id":user["id"],"full_name":user["full_name"]}
         else:
             st.error("Invalid email or password.")
@@ -75,9 +96,13 @@ def render_auth_page():
                         user_data=authenticate_user(conn,login_email,login_pwd)
                         if conn: conn.close()
                         if user_data:
-                            st.session_state["logged_in"]=True
-                            st.session_state["user_id"]=user_data["id"]
-                            st.session_state["user_name"]=user_data["full_name"]
+                            if remember_me:
+                                from config import cookie_controller as controller
+                                secure_token = create_access_token(user_data["id"], expires_in_days=30, username=user_data['full_name'])
+                                controller.set("user_id", secure_token, max_age=30*24*3600)
+                            st.session_state["logged_in"] = True
+                            st.session_state["user_id"] = user_data["id"]
+                            st.session_state["user_name"] = user_data["full_name"]
                             time.sleep(1)
                             st.rerun()
         with tab2:
