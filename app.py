@@ -21,7 +21,7 @@ MODEL={
     "gemini-2-flash-lite":"Gemini 2 Flash Lite",
     "gemini-2.5-flash-lite":"Gemini 2.5 Flash Lite"
 }
-st.set_page_config(page_title="Gemini",layout="wide")
+st.set_page_config(page_title="AI STUDIO",page_icon=':material/robot_2:',layout="wide")
 from config import cookie_controller as controller
 stored_token = controller.get("user_id")
 time.sleep(0.1)

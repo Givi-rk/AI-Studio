@@ -49,24 +49,6 @@ def get_youtube_url(text):
     pattern=r"(https?://(?:www\.)?(?:youtube\.com|youtu\.be)[^\s]+)"
     match=re.search(pattern,text)
     return match.group(0) if match else None
-# def initialize_gemini_chat(generation_config:dict, model = 'gemini-3.1-flash-lite',web_search=False):
-#     config=types.GenerateContentConfig(
-#         temperature=generation_config.get("temperature",1.0),
-#         max_output_tokens=generation_config.get("max_output_tokens",2048),
-#         top_p=generation_config.get("top_p",0.95),
-#         top_k=generation_config.get("top_k",40),
-#         system_instruction=SYSTEM
-#     )
-#     if st.session_state.web_search:
-#         config.tools=[types.Tool(google_search=types.GoogleSearch())]
-#     try:
-#         return client.chats.create(model=model,config=config,)
-#     except APIError as e:
-#         st.error(f"Gemini API error during initialization:{e.message}")
-#         return None
-#     except Exception as e:
-#         st.error(f"An unexpected error occured:{e}")
-#         return None
 def initialize_gemini_chat(generation_config: dict, model="gemini-3.1-flash-lite", web_search=False):
     config_kwargs = dict(
         temperature=generation_config.get("temperature", 1.0),
@@ -88,41 +70,6 @@ def initialize_gemini_chat(generation_config: dict, model="gemini-3.1-flash-lite
     except Exception as e:
         st.error(f"An unexpected error occured:{e}")
         return None
-# def stream_response(chat_session,prompt:str,uploaded_files=None):
-#     try:
-#         url=get_youtube_url(prompt)
-#         contents=[]
-#         if prompt:
-#             contents.append(prompt.replace(url, '').strip() if url else prompt)
-#         if url:
-#             contents.append(types.Part.from_uri(file_uri=url, mime_type='video/*'))
-#         if uploaded_files:
-#             for file in uploaded_files:
-#                 if file.type.startswith("image/"):
-#                     image=Image.open(file)
-#                     contents.append(image)
-#                 else:
-#                     gemini_file=client.files.upload(file=file,config={"mime_type":file.type})
-#                     while gemini_file.state and gemini_file.state.name=="PROCESSING":
-#                         time.sleep(2)
-#                         gemini_file=client.files.get(name=gemini_file.name)
-#                     contents.append(gemini_file)
-#         response=chat_session.send_message(contents)
-#         response_text= response.text
-#         match = re.search(r'\{.*\}', response_text, re.DOTALL)
-#         if match:
-#             try:
-#                 data = json.loads(match.group(0))
-#                 if data.get("document"):
-#                     file_path = generate_file(data["html"], data["extension"])
-#                     return {"text": data["text"], "file_path": file_path}
-#             except:
-#                 pass
-#         return {"text": response_text, "file_path": None}
-#     except APIError as e:
-#         st.error(f"Gemini API Error:{e.message}")
-#     except Exception as e:
-#         st.error(f"{e}")
 def generate_chat_title(prompt):
     config = types.GenerateContentConfig(system_instruction='''You are a title generator. Return ONLY the title (max 6 words, no punctuation, no quotes)
                                                       ''', max_output_tokens=20)
