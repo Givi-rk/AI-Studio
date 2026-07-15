@@ -1,0 +1,11 @@
+pandas
+streamlit
+python-docx
+xhtml2pdf
+mysql-connector-python
+python-dotenv
+pydantic
+google-genai
+bcrypt
+PyJWT
+streamlit-cookies-controller

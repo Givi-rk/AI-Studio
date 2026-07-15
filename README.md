@@ -34,6 +34,7 @@ An AI-powered chatbot built with Python, Streamlit, Google Gemini API, and MySQL
     - MySQL
 - Libraries
     - pandas
+    - streamlit
     - python-docx
     - xhtml2pdf
     - mysql-connector-python
